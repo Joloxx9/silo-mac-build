@@ -166,6 +166,39 @@ def android(root):
     save(wordmark(764, 400), root, "androidTvApp/src/androidMain/res/drawable-nodpi/silo_wordmark.png")
 
 
+def lockup(w, h, mark_frac=0.8, text_frac=0.62, gap_frac=0.06):
+    """The sidebar/header lockup at w x h: a gold four-point spark with a small
+    ember spark beside it, then the white name, centred on one line and left
+    aligned, the way Silo's lockup puts its mark before the wordmark. The name
+    shrinks to fit the width."""
+    W, H = w * SS, h * SS
+    mark = int(H * mark_frac)
+    gap = H * gap_frac
+    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    size = int(H * text_frac * 1.32)
+    f = font(size)
+    box = probe.textbbox((0, 0), NAME, font=f)
+    room = W * 0.97 - mark - gap
+    if box[2] - box[0] > room:
+        f = font(int(size * room / (box[2] - box[0])))
+        box = probe.textbbox((0, 0), NAME, font=f)
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gcx, gcy = mark * 0.5, H / 2
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse(
+        [gcx - mark * 0.3, gcy - mark * 0.3, gcx + mark * 0.3, gcy + mark * 0.3],
+        fill=GLOW + (140,),
+    )
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(mark * 0.12)))
+    d = ImageDraw.Draw(img)
+    d.polygon(spark_points(gcx, gcy, mark * 0.46, inner=0.2), fill=(255, 176, 59, 255))
+    d.polygon(spark_points(gcx + mark * 0.42, gcy - mark * 0.36, mark * 0.13, inner=0.24), fill=BOTTOM + (255,))
+    tx = mark + gap - box[0]
+    ty = (H - (box[3] - box[1])) / 2 - box[1]
+    d.text((tx, ty), NAME, font=f, fill=(255, 255, 255, 255))
+    return img.resize((w, h), Image.LANCZOS)
+
+
 def maskable_icon(size):
     # PWA maskable icons keep the art inside the central 80% safe zone.
     bg = gradient(size, size).convert("RGBA")
@@ -176,7 +209,9 @@ def server(root):
     """The web app's icons, favicon, mark and sidebar wordmark."""
     pub = "web/public"
     save(app_icon(1024), root, f"{pub}/silo-icon-1024.png")
-    save(wordmark(382, 200), root, f"{pub}/silo-wordmark-sidebar.png")
+    # Drawn in 2.95:1 boxes; the server's apply-brand.sh widens the web
+    # app's 2.35:1 logo boxes to fit the longer name.
+    save(lockup(708, 240), root, f"{pub}/silo-wordmark-sidebar.png")
     save(app_icon(180), root, f"{pub}/apple-touch-icon.png")
     save(app_icon(192), root, f"{pub}/web-app-icon-192.png")
     save(app_icon(512), root, f"{pub}/web-app-icon-512.png")
