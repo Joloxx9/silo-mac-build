@@ -1,4 +1,4 @@
-"""Generate the placeholder Fuse brand art for every platform.
+"""Generate the placeholder Spark brand art for every platform.
 
     uv run --with pillow python brand/generate.py <apple-repo> <android-repo>
 
@@ -14,7 +14,7 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-NAME = "Fuse"
+NAME = "Spark"
 FONT = os.environ.get(
     "FUSE_FONT",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "Poppins-Bold.ttf"),
@@ -88,15 +88,20 @@ def font(px):
 def wordmark(w, h, color=(255, 255, 255), fill=0.62):
     img = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    f = font(int(h * SS * fill))
+    size = int(h * SS * fill)
+    f = font(size)
     box = d.textbbox((0, 0), NAME, font=f)
+    # Shrink a long name so it fits the width with a small margin.
+    if box[2] - box[0] > w * SS * 0.92:
+        f = font(int(size * w * SS * 0.92 / (box[2] - box[0])))
+        box = d.textbbox((0, 0), NAME, font=f)
     tw, th = box[2] - box[0], box[3] - box[1]
     d.text(((w * SS - tw) / 2 - box[0], (h * SS - th) / 2 - box[1]), NAME, font=f, fill=color + (255,))
     return img.resize((w, h), Image.LANCZOS)
 
 
 def tall_mark(w, h):
-    """The in-app mark: a spark above a fuse cord, in the tall box the upstream mark used."""
+    """The in-app mark: a spark above a spark cord, in the tall box the upstream mark used."""
     img = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     W, H = w * SS, h * SS
@@ -140,10 +145,10 @@ def apple(root):
         save(banner(w * 2, h * 2, 0.5), root, f"{tv}/{name}.imageset/Content@2x.png")
     # In-app mark and wordmark: PNG replacements for the upstream SVGs. The
     # apply script swaps the imageset contents and Contents.json.
-    save(tall_mark(266, 855), root, f"{cat}/SiloMark.imageset/fuse-mark.png")
-    save(tall_mark(532, 1710), root, f"{cat}/SiloMark.imageset/fuse-mark@2x.png")
-    save(wordmark(764, 400), root, f"{cat}/SiloWordmark.imageset/fuse-wordmark.png")
-    save(wordmark(1528, 800), root, f"{cat}/SiloWordmark.imageset/fuse-wordmark@2x.png")
+    save(tall_mark(266, 855), root, f"{cat}/SiloMark.imageset/spark-mark.png")
+    save(tall_mark(532, 1710), root, f"{cat}/SiloMark.imageset/spark-mark@2x.png")
+    save(wordmark(764, 400), root, f"{cat}/SiloWordmark.imageset/spark-wordmark.png")
+    save(wordmark(1528, 800), root, f"{cat}/SiloWordmark.imageset/spark-wordmark@2x.png")
 
 
 def android(root):

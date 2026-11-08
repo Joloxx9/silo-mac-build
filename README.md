@@ -1,6 +1,6 @@
 # silo-mac-build
 
-Builds of Fuse, this fork of Silo with its own changes (for example the missing-seasons
+Builds of Spark, this fork of Silo with its own changes (for example the missing-seasons
 feature), for every platform. The apps are rebranded at build time by each fork's
 `fork/apply-brand.sh`; see `fork/README.md` in `silo-apple` and `silo-android`.
 
@@ -33,7 +33,7 @@ the apps' settings fixtures.
 
 ## Install
 
-- macOS: unzip, move `Fuse.app` to Applications, run `xattr -cr /Applications/Fuse.app`.
+- macOS: unzip, move `Spark.app` to Applications, run `xattr -cr /Applications/Spark.app`.
 - iOS: re-sign the IPA with AltStore, SideStore or Sideloadly.
 - tvOS: re-sign and install with Xcode on a Mac (Window > Devices and Simulators).
 - Android: the APKs install next to the official Silo app (own application ID).
