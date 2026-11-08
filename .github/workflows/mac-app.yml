@@ -1,6 +1,6 @@
 name: macOS App Build (personal)
 
-# Builds Silo-Server/silo-apple's SiloMac target unsigned on a GitHub-hosted macOS runner, ad-hoc
+# Builds a silo-apple repository's SiloMac target unsigned on a GitHub-hosted macOS runner, ad-hoc
 # signs it, and publishes Silo-macOS.zip as an artifact and a prerelease.
 # No Apple Developer account is used, so on first launch macOS Gatekeeper
 # needs: right-click Silo.app > Open, or `xattr -cr /Applications/Silo.app`.
@@ -8,9 +8,12 @@ name: macOS App Build (personal)
 on:
   workflow_dispatch:
     inputs:
+      repository:
+        description: 'silo-apple repository to build'
+        default: Joloxx9/silo-apple
       ref:
-        description: 'Silo-Server/silo-apple ref to build'
-        default: main
+        description: 'Branch, tag or commit to build'
+        default: fork-build
 
 concurrency:
   group: mac-app
@@ -25,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Silo-Server/silo-apple
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
@@ -85,4 +88,4 @@ jobs:
             --target main \
             --prerelease \
             --title "Silo for macOS (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Unsigned (ad-hoc) personal build of the SiloMac target. Unzip, move Silo.app to Applications, then run: xattr -cr /Applications/Silo.app"
+            --notes "Unsigned (ad-hoc) personal build of the SiloMac target from ${{ inputs.repository }}@${{ inputs.ref }}. Unzip, move Silo.app to Applications, then run: xattr -cr /Applications/Silo.app"
