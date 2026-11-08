@@ -37,6 +37,7 @@ MIRRORS=(
   "silo-plugin-metadata-aura Artic0din/silo-plugin-metadata-aura"
 )
 APPLE_DIR=${APPLE_DIR:-$WORK/silo-apple-mac}
+CATALOG_DIR=${CATALOG_DIR:-$WORK/spark-plugins/silo-plugins-src}
 ANDROID_DIR=${ANDROID_DIR:-$WORK/silo-android}
 
 mode=full
@@ -159,8 +160,40 @@ build_android() {
   summary+=("android: started spark-apk.yml")
 }
 
+# The Spark plugin catalog is a copy, not a GitHub fork (Silo-Server does not
+# allow forking it), so its main mirror and spark merge run through git.
+sync_catalog() {
+  local dir=$CATALOG_DIR
+  if [ ! -d "$dir/.git" ]; then
+    git clone -q -b spark "https://github.com/$OWNER/spark-plugins.git" "$dir"
+    git -C "$dir" remote add upstream https://github.com/Silo-Server/silo-plugins.git
+  fi
+  cd "$dir"
+  git fetch -q origin && git fetch -q upstream main
+  local new
+  new=$(git rev-list --count origin/main..upstream/main)
+  if [ "$new" = 0 ]; then
+    summary+=("catalog: already has Silo's catalog")
+    return
+  fi
+  if [ "$mode" = check ]; then
+    summary+=("catalog: $new new Silo catalog commits")
+    return
+  fi
+  git push -q origin upstream/main:refs/heads/main
+  git checkout -q spark && git merge -q --ff-only origin/spark
+  if ! g merge -q --no-edit upstream/main -m "Merge Silo's catalog into spark"; then
+    git merge --abort
+    failed+=("catalog: merge conflicts; merge Silo-Server/silo-plugins into spark by hand")
+    return
+  fi
+  git push -q origin spark
+  summary+=("catalog: merged $new Silo catalog commits into spark")
+}
+
 if [ "$mode" != buildonly ]; then
   mirror_mains
+  sync_catalog
   want server && sync server "$SERVER_DIR" silo-server "$BRANCH"
   want apple && sync apple "$APPLE_DIR" silo-apple "$BRANCH"
   want android && sync android "$ANDROID_DIR" silo-android "$BRANCH"
