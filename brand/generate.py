@@ -1,6 +1,6 @@
 """Generate the placeholder Spark brand art for every platform.
 
-    uv run --with pillow python brand/generate.py <apple-repo> <android-repo>
+    uv run --with pillow python brand/generate.py <apple-repo> <android-repo> [<server-repo>]
 
 Writes the files into each repo's fork/overlay/ tree, mirroring the paths of
 the upstream Silo assets they replace. fork/apply-brand.sh copies the overlay
@@ -166,8 +166,30 @@ def android(root):
     save(wordmark(764, 400), root, "androidTvApp/src/androidMain/res/drawable-nodpi/silo_wordmark.png")
 
 
+def maskable_icon(size):
+    # PWA maskable icons keep the art inside the central 80% safe zone.
+    bg = gradient(size, size).convert("RGBA")
+    return Image.alpha_composite(bg, draw_spark(size, scale=0.62 * 0.8)).convert("RGB")
+
+
+def server(root):
+    """The web app's icons, favicon, mark and sidebar wordmark."""
+    pub = "web/public"
+    save(app_icon(1024), root, f"{pub}/silo-icon-1024.png")
+    save(wordmark(382, 200), root, f"{pub}/silo-wordmark-sidebar.png")
+    save(app_icon(180), root, f"{pub}/apple-touch-icon.png")
+    save(app_icon(192), root, f"{pub}/web-app-icon-192.png")
+    save(app_icon(512), root, f"{pub}/web-app-icon-512.png")
+    save(maskable_icon(512), root, f"{pub}/maskable-icon-512.png")
+    path = os.path.join(root, "fork", "overlay", pub, "favicon.ico")
+    app_icon(256).save(path, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (256, 256)])
+
+
 if __name__ == "__main__":
-    apple_root, android_root = sys.argv[1], sys.argv[2]
-    apple(apple_root)
-    android(android_root)
+    if len(sys.argv) > 1 and sys.argv[1]:
+        apple(sys.argv[1])
+    if len(sys.argv) > 2 and sys.argv[2]:
+        android(sys.argv[2])
+    if len(sys.argv) > 3 and sys.argv[3]:
+        server(sys.argv[3])
     print("wrote overlays")
