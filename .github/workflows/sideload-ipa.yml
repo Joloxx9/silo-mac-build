@@ -95,6 +95,14 @@ jobs:
           working-directory: src
           bundler-cache: true
 
+      # The runner's Xcode is not the one silo-apple pins, so its resolver
+      # disagrees with the committed Package.resolved. Let it resolve.
+      - name: Allow package resolution on this Xcode
+        run: |
+          sed -i '' 's/%w\[-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile\]/%w[]/' fastlane/Fastfile
+          sed -i '' 's/"-resolvePackageDependencies", "-disableAutomaticPackageResolution",/"-resolvePackageDependencies"]/; /^          "-onlyUsePackageVersionsFromResolvedFile"\]$/d' fastlane/Fastfile
+          sed -n '105,120p' fastlane/Fastfile
+
       - name: Build unsigned ${{ matrix.platform }} IPA
         run: bundle exec fastlane ios ${{ matrix.lane }}
         env:
