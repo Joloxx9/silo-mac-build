@@ -14,7 +14,7 @@ on:
         default: Joloxx9/silo-apple
       ref:
         description: 'Branch, tag or commit to build'
-        default: fork-build
+        default: spark
 
 concurrency:
   group: mac-app

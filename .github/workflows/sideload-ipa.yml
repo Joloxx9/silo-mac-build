@@ -13,7 +13,7 @@ on:
         default: Joloxx9/silo-apple
       ref:
         description: 'Branch, tag or commit to build'
-        default: fork-build
+        default: spark
       version:
         description: 'Marketing version'
         default: '1.1.0'

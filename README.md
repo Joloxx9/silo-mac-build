@@ -6,14 +6,22 @@ feature), for every platform. The apps are rebranded at build time by each fork'
 
 | Platform | Fork branch | Build | Output |
 |---|---|---|---|
-| Server | `Joloxx9/silo-server` `main` | `fork-image.yml` in that repo | `ghcr.io/joloxx9/silo-server:latest` |
-| macOS | `Joloxx9/silo-apple` `fork-build` | `mac-app.yml` here | `Silo-macOS.zip` in Releases |
-| iOS, tvOS | `Joloxx9/silo-apple` `fork-build` | `sideload-ipa.yml` here | unsigned `.ipa` files in Releases |
-| App Store (iOS, tvOS, macOS) | `Joloxx9/silo-apple` `fork-build` | `store-apple.yml` here | TestFlight / App Store Connect |
-| Google Play | `Joloxx9/silo-android` `fork-build` | `fork-store.yml` in that repo | Play track |
-| Android phone, TV | `Joloxx9/silo-android` `fork-build` | `fork-build-apk.yml` in that repo (on push) | debug APKs in that repo's Releases |
+| Server | `Joloxx9/silo-server` `spark` | `fork-image.yml` in that repo (on push) | `ghcr.io/joloxx9/silo-server:latest` |
+| macOS | `Joloxx9/silo-apple` `spark` | `mac-app.yml` here | `Silo-macOS.zip` in Releases |
+| iOS, tvOS | `Joloxx9/silo-apple` `spark` | `sideload-ipa.yml` here | unsigned `.ipa` files in Releases |
+| App Store (iOS, tvOS, macOS) | `Joloxx9/silo-apple` `spark` | `store-apple.yml` here | TestFlight / App Store Connect |
+| Google Play | `Joloxx9/silo-android` `spark` | `fork-store.yml` in that repo | Play track |
+| Android phone, TV | `Joloxx9/silo-android` `spark` | `spark-apk.yml` in that repo (on push) | debug APKs in that repo's Releases |
 
 The `silo-apple` fork has Actions disabled, so its builds run here.
+
+Silo stays Silo, Spark is Spark: in every fork, `main` mirrors upstream Silo
+untouched and Spark's changes live on `spark`, the default branch. Plugins
+follow the same rule: `silo-plugin-sdk`, `silo-plugin-watchprovider-mdblist`,
+`silo-plugin-mediux` and `silo-plugin-metadata-aura` keep `main` as the
+upstream mirror and their Spark changes on `spark`; `silo-plugin-fanart` and
+`silo-plugin-watchprovider-scrob-local`, which have no upstream, live on
+`spark` only. `sync-and-build.sh` fast-forwards every `main` mirror.
 
 ## Update everything
 

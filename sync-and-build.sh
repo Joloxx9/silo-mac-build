@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Pull upstream Silo into the personal fork branches and start every build.
+# Pull upstream Silo into the Spark branches and start every build.
+#
+# Silo stays Silo, Spark is Spark: every fork's `main` mirrors upstream Silo
+# untouched (fast-forwarded here), and Spark's own changes live on `spark`.
 #
 #   ./sync-and-build.sh              merge upstream, push, build everything
 #   ./sync-and-build.sh --check      only report what is new and whether it merges cleanly
@@ -10,10 +13,11 @@
 # A repo whose merge conflicts is left untouched (the merge is aborted) and
 # reported at the end; resolve it by hand, push, and run with --build-only.
 #
-# Fork branches:
-#   server   Joloxx9/silo-server  main        -> fork-image.yml   -> ghcr.io/joloxx9/silo-server:latest
-#   apple    Joloxx9/silo-apple   fork-build  -> silo-mac-build: mac-app.yml + sideload-ipa.yml
-#   android  Joloxx9/silo-android fork-build  -> fork-build-apk.yml (runs on push)
+# Spark branches:
+#   server   Joloxx9/silo-server  spark -> fork-image.yml (runs on push) -> ghcr.io/joloxx9/silo-server:latest
+#   apple    Joloxx9/silo-apple   spark -> silo-mac-build: mac-app.yml + sideload-ipa.yml
+#   android  Joloxx9/silo-android spark -> spark-apk.yml (runs on push)
+# Plugin forks with a `spark` branch only get their `main` mirror refreshed.
 set -euo pipefail
 
 OWNER=Joloxx9
@@ -21,6 +25,17 @@ GIT_NAME=Joloxx9
 GIT_EMAIL=joloxx9@gmail.com
 WORK=${WORK:-$HOME/work}
 SERVER_DIR=${SERVER_DIR:-$HOME/silo-server}
+BRANCH=spark
+# Forks whose `main` mirrors upstream: repo name -> upstream owner/repo.
+MIRRORS=(
+  "silo-server Silo-Server/silo-server"
+  "silo-apple Silo-Server/silo-apple"
+  "silo-android Silo-Server/silo-android"
+  "silo-plugin-sdk Silo-Server/silo-plugin-sdk"
+  "silo-plugin-watchprovider-mdblist Silo-Server/silo-plugin-watchprovider-mdblist"
+  "silo-plugin-mediux Pukabyte/silo-plugin-mediux"
+  "silo-plugin-metadata-aura Artic0din/silo-plugin-metadata-aura"
+)
 APPLE_DIR=${APPLE_DIR:-$WORK/silo-apple-mac}
 ANDROID_DIR=${ANDROID_DIR:-$WORK/silo-android}
 
@@ -94,31 +109,61 @@ sync() {
   summary+=("$key: merged $new upstream commits and pushed $branch")
 }
 
+# Fast-forward each fork's `main` to upstream. A mirror that diverged is
+# reported, never merged into: Spark's changes belong on spark.
+mirror_mains() {
+  local entry repo up branch out
+  for entry in "${MIRRORS[@]}"; do
+    read -r repo up <<<"$entry"
+    branch=$(gh api "repos/$up" -q .default_branch)
+    if [ "$mode" = check ]; then
+      out=$(gh api "repos/$up/compare/$branch...$OWNER:main" -q '"ahead \(.ahead_by), behind \(.behind_by)"' 2>&1) || true
+      summary+=("mirror $repo main vs $up: $out")
+      continue
+    fi
+    out=$(gh api "repos/$up/compare/$branch...$OWNER:main" -q .ahead_by 2>/dev/null || echo "?")
+    if [ "$out" != 0 ]; then
+      failed+=("mirror $repo: main has $out commits upstream lacks; move them to spark, then reset main")
+      continue
+    fi
+    gh api -X PATCH "repos/$OWNER/$repo/git/refs/heads/main" \
+      -f sha="$(gh api "repos/$up/branches/$branch" -q .commit.sha)" >/dev/null \
+      && summary+=("mirror $repo: main = $up $branch") \
+      || failed+=("mirror $repo: could not fast-forward main")
+  done
+}
+
 build_server() {
-  gh workflow run fork-image.yml -R "$OWNER/silo-server" --ref main
+  # A push to spark already started the build.
+  if [[ " ${pushed[*]:-} " == *" server "* ]]; then
+    summary+=("server: build started by the push")
+    return
+  fi
+  gh workflow run fork-image.yml -R "$OWNER/silo-server" --ref "$BRANCH"
   summary+=("server: started fork-image.yml")
 }
 build_apple() {
   gh workflow run mac-app.yml -R "$OWNER/silo-mac-build" \
-    -f repository="$OWNER/silo-apple" -f ref=fork-build
+    -f repository="$OWNER/silo-apple" -f ref="$BRANCH"
   gh workflow run sideload-ipa.yml -R "$OWNER/silo-mac-build" \
-    -f repository="$OWNER/silo-apple" -f ref=fork-build -f platform=both
+    -f repository="$OWNER/silo-apple" -f ref="$BRANCH" -f platform=both
   summary+=("apple: started macOS and iOS/tvOS builds")
 }
 build_android() {
-  # A push to fork-build already started the build.
+  # A push to spark already started the build.
   if [[ " ${pushed[*]:-} " == *" android "* ]]; then
     summary+=("android: build started by the push")
     return
   fi
-  gh workflow run fork-build-apk.yml -R "$OWNER/silo-android" --ref fork-build
-  summary+=("android: started fork-build-apk.yml")
+  gh workflow run spark-apk.yml -R "$OWNER/silo-android" --ref "$BRANCH"
+  summary+=("android: started spark-apk.yml")
 }
 
 if [ "$mode" != buildonly ]; then
-  want server && sync server "$SERVER_DIR" silo-server main
-  want apple && sync apple "$APPLE_DIR" silo-apple fork-build
-  want android && sync android "$ANDROID_DIR" silo-android fork-build
+  mirror_mains
+  want server && sync server "$SERVER_DIR" silo-server "$BRANCH"
+  want apple && sync apple "$APPLE_DIR" silo-apple "$BRANCH"
+  want android && sync android "$ANDROID_DIR" silo-android "$BRANCH"
 fi
 
 if [ "$mode" = full ] || [ "$mode" = buildonly ]; then
