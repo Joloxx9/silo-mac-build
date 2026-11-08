@@ -1,14 +1,17 @@
 # silo-mac-build
 
-Personal builds of Silo with the fork's own changes (for example the missing-seasons
-feature), for every platform.
+Builds of Fuse, this fork of Silo with its own changes (for example the missing-seasons
+feature), for every platform. The apps are rebranded at build time by each fork's
+`fork/apply-brand.sh`; see `fork/README.md` in `silo-apple` and `silo-android`.
 
 | Platform | Fork branch | Build | Output |
 |---|---|---|---|
 | Server | `Joloxx9/silo-server` `main` | `fork-image.yml` in that repo | `ghcr.io/joloxx9/silo-server:latest` |
 | macOS | `Joloxx9/silo-apple` `fork-build` | `mac-app.yml` here | `Silo-macOS.zip` in Releases |
 | iOS, tvOS | `Joloxx9/silo-apple` `fork-build` | `sideload-ipa.yml` here | unsigned `.ipa` files in Releases |
-| Android phone, TV | `Joloxx9/silo-android` `fork-build` | `fork-build-apk.yml` in that repo | debug APKs in that repo's Releases |
+| App Store (iOS, tvOS, macOS) | `Joloxx9/silo-apple` `fork-build` | `store-apple.yml` here | TestFlight / App Store Connect |
+| Google Play | `Joloxx9/silo-android` `fork-build` | `fork-store.yml` in that repo | Play track |
+| Android phone, TV | `Joloxx9/silo-android` `fork-build` | `fork-build-apk.yml` in that repo (on push) | debug APKs in that repo's Releases |
 
 The `silo-apple` fork has Actions disabled, so its builds run here.
 
@@ -30,7 +33,12 @@ the apps' settings fixtures.
 
 ## Install
 
-- macOS: unzip, move `Silo.app` to Applications, run `xattr -cr /Applications/Silo.app`.
+- macOS: unzip, move `Fuse.app` to Applications, run `xattr -cr /Applications/Fuse.app`.
 - iOS: re-sign the IPA with AltStore, SideStore or Sideloadly.
 - tvOS: re-sign and install with Xcode on a Mac (Window > Devices and Simulators).
-- Android: uninstall the store version first; the debug APKs have a different signature.
+- Android: the APKs install next to the official Silo app (own application ID).
+
+## Brand art
+
+`brand/generate.py` draws the placeholder icons (Poppins Bold, OFL) into each fork's
+`fork/overlay/`: `uv run --with pillow python brand/generate.py <silo-apple> <silo-android>`.

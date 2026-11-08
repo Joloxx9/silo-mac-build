@@ -1,0 +1,167 @@
+name: Store release (App Store Connect)
+
+# Archives the branded (fork/brand.env) iOS, tvOS and macOS apps of a
+# silo-apple fork branch, signs them with your team through automatic signing,
+# and uploads them to App Store Connect (TestFlight first, then submit for
+# review in App Store Connect).
+#
+# Repository secrets (App Store Connect > Users and Access > Integrations >
+# App Store Connect API, a key with the App Manager role):
+#   APPLE_TEAM_ID    10-character team ID
+#   ASC_KEY_ID       the API key's ID
+#   ASC_ISSUER_ID    the issuer ID shown above the keys
+#   ASC_KEY_P8       the downloaded AuthKey_XXXX.p8 file's contents
+# Create the app record in App Store Connect first, with the bundle ID from
+# fork/brand.env, and register the App Group from fork/brand.env for the team.
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'silo-apple repository to build'
+        default: Joloxx9/silo-apple
+      ref:
+        description: 'Branch, tag or commit to build'
+        default: fork-build
+      version:
+        description: 'Marketing version (e.g. 1.0.0)'
+        required: true
+      platforms:
+        description: 'Platforms to upload'
+        type: choice
+        default: all
+        options: [all, ios, tvos, macos]
+
+concurrency:
+  group: store-apple
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - name: Check the App Store Connect secrets
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+          KEY: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=""
+          [ -n "$TEAM" ] || missing="$missing APPLE_TEAM_ID"
+          [ -n "$KEY_ID" ] || missing="$missing ASC_KEY_ID"
+          [ -n "$ISSUER" ] || missing="$missing ASC_ISSUER_ID"
+          [ -n "$KEY" ] || missing="$missing ASC_KEY_P8"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. See the header of store-apple.yml."
+            exit 1
+          fi
+      - id: set
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          ios='{"name":"iOS","scheme":"Silo","destination":"generic/platform=iOS"}'
+          tvos='{"name":"tvOS","scheme":"SiloTV","destination":"generic/platform=tvOS"}'
+          macos='{"name":"macOS","scheme":"SiloMac","destination":"generic/platform=macOS"}'
+          case "$PLATFORMS" in
+            ios) include="[$ios]" ;;
+            tvos) include="[$tvos]" ;;
+            macos) include="[$macos]" ;;
+            *) include="[$ios,$tvos,$macos]" ;;
+          esac
+          echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
+
+  upload:
+    needs: setup
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          path: src
+          persist-credentials: false
+
+      - name: Select newest Xcode
+        run: |
+          XCODE="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install XcodeGen (pinned, checksum-verified)
+        uses: ./src/.github/actions/install-xcodegen
+
+      - name: Apply the fork's brand
+        working-directory: src
+        run: fork/apply-brand.sh store
+
+      - name: Generate Xcode project
+        working-directory: src/iosApp
+        run: xcodegen generate
+
+      - name: Write the API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Archive ${{ matrix.name }}
+        working-directory: src/iosApp
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Silo.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -configuration Release \
+            -destination "${{ matrix.destination }}" \
+            -archivePath "$RUNNER_TEMP/app.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            | tee "$RUNNER_TEMP/archive.log" | grep -E "error:|ARCHIVE" || true
+          test "${PIPESTATUS[0]}" -eq 0 || { tail -200 "$RUNNER_TEMP/archive.log"; exit 1; }
+
+      - name: Upload ${{ matrix.name }} to App Store Connect
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/app.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"

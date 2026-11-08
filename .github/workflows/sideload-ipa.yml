@@ -95,6 +95,10 @@ jobs:
           working-directory: src
           bundler-cache: true
 
+      - name: Apply the fork's brand
+        run: |
+          if [ -x fork/apply-brand.sh ]; then fork/apply-brand.sh personal; fi
+
       # The runner's Xcode is not the one silo-apple pins, so its resolver
       # disagrees with the committed Package.resolved. Let it resolve.
       - name: Allow package resolution on this Xcode

@@ -1,0 +1,168 @@
+"""Generate the placeholder Fuse brand art for every platform.
+
+    uv run --with pillow python brand/generate.py <apple-repo> <android-repo>
+
+Writes the files into each repo's fork/overlay/ tree, mirroring the paths of
+the upstream Silo assets they replace. fork/apply-brand.sh copies the overlay
+over the checkout at build time. Replace this placeholder by editing the
+drawing functions (or dropping real art into the overlays) and re-running.
+"""
+
+import math
+import os
+import sys
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+NAME = "Fuse"
+FONT = os.environ.get(
+    "FUSE_FONT",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "Poppins-Bold.ttf"),
+)
+TOP = (36, 16, 70)  # deep violet
+BOTTOM = (255, 94, 31)  # ember orange
+GLOW = (255, 196, 92)
+SS = 4  # supersampling factor for antialiased shapes
+
+
+def gradient(w, h, top=TOP, bottom=BOTTOM, diagonal=True):
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            t = ((x / max(w - 1, 1)) * 0.35 + (y / max(h - 1, 1)) * 0.65) if diagonal else y / max(h - 1, 1)
+            t = t * t * (3 - 2 * t)
+            px[x, y] = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+    return img
+
+
+def fast_gradient(w, h):
+    # Gradients for the very large tvOS images are drawn small and scaled up.
+    small = gradient(max(w // 8, 2), max(h // 8, 2))
+    return small.resize((w, h), Image.BICUBIC)
+
+
+def spark_points(cx, cy, r, inner=0.18, points=4, rot=-math.pi / 2):
+    pts = []
+    for i in range(points * 2):
+        a = rot + i * math.pi / points
+        rr = r if i % 2 == 0 else r * inner
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    return pts
+
+
+def draw_spark(size, scale=0.62, color=(255, 255, 255), glow=True):
+    """A transparent square with the four-point spark centred in it."""
+    s = size * SS
+    layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    r = s * scale / 2
+    if glow:
+        g = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        ImageDraw.Draw(g).ellipse(
+            [s / 2 - r * 0.55, s / 2 - r * 0.55, s / 2 + r * 0.55, s / 2 + r * 0.55],
+            fill=GLOW + (190,),
+        )
+        layer = Image.alpha_composite(layer, g.filter(ImageFilter.GaussianBlur(s * 0.06)))
+    d = ImageDraw.Draw(layer)
+    d.polygon(spark_points(s / 2, s / 2, r), fill=color + (255,))
+    small = r * 0.32
+    d.polygon(spark_points(s / 2 + r * 0.62, s / 2 - r * 0.62, small, inner=0.22), fill=color + (235,))
+    return layer.resize((size, size), Image.LANCZOS)
+
+
+def app_icon(size, rgb=True):
+    bg = gradient(size, size).convert("RGBA")
+    img = Image.alpha_composite(bg, draw_spark(size))
+    return img.convert("RGB") if rgb else img
+
+
+def adaptive_foreground(size):
+    # Android adaptive icons keep the art inside the central 66/108 safe zone.
+    return draw_spark(size, scale=0.62 * 66 / 108)
+
+
+def font(px):
+    return ImageFont.truetype(FONT, px)
+
+
+def wordmark(w, h, color=(255, 255, 255), fill=0.62):
+    img = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    f = font(int(h * SS * fill))
+    box = d.textbbox((0, 0), NAME, font=f)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    d.text(((w * SS - tw) / 2 - box[0], (h * SS - th) / 2 - box[1]), NAME, font=f, fill=color + (255,))
+    return img.resize((w, h), Image.LANCZOS)
+
+
+def tall_mark(w, h):
+    """The in-app mark: a spark above a fuse cord, in the tall box the upstream mark used."""
+    img = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    W, H = w * SS, h * SS
+    cord_w = W * 0.22
+    d.rounded_rectangle([W / 2 - cord_w / 2, H * 0.36, W / 2 + cord_w / 2, H], radius=cord_w / 2, fill=BOTTOM + (255,))
+    d.polygon(spark_points(W / 2, H * 0.17, W * 0.5, inner=0.2), fill=(255, 176, 60, 255))
+    return img.resize((w, h), Image.LANCZOS)
+
+
+def banner(w, h, mark_frac=0.62):
+    bg = fast_gradient(w, h).convert("RGBA")
+    m = draw_spark(int(h * mark_frac))
+    bg.alpha_composite(m, (int(w * 0.08), (h - m.height) // 2))
+    wm = wordmark(int(w * 0.5), int(h * 0.6))
+    bg.alpha_composite(wm, (int(w * 0.08) + m.width, (h - wm.height) // 2))
+    return bg.convert("RGB")
+
+
+def save(img, root, rel):
+    path = os.path.join(root, "fork", "overlay", rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    img.save(path, optimize=True)
+
+
+def apple(root):
+    cat = "iosApp/iosApp/Assets.xcassets"
+    save(app_icon(1024), root, f"{cat}/AppIcon.appiconset/AppIcon.png")
+    for pt in (16, 32, 128, 256, 512):
+        for sc in (1, 2):
+            save(app_icon(pt * sc, rgb=False), root, f"{cat}/AppIcon.appiconset/AppIcon-mac-{pt}x{pt}@{sc}x.png")
+    tv = f"{cat}/TVAppIcon.brandassets"
+    for stack, sizes in (("App Icon - App Store", [(1280, 768, "")]), ("App Icon", [(400, 240, ""), (800, 480, "@2x")])):
+        for w, h, sfx in sizes:
+            save(fast_gradient(w, h), root, f"{tv}/{stack}.imagestack/Layer0.imagestacklayer/Content.imageset/Content{sfx}.png")
+            layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            m = draw_spark(int(h * 0.8))
+            layer.alpha_composite(m, ((w - m.width) // 2, (h - m.height) // 2))
+            save(layer, root, f"{tv}/{stack}.imagestack/Layer1.imagestacklayer/Content.imageset/Content{sfx}.png")
+    for name, w, h in (("Top Shelf Image Wide", 2320, 720), ("Top Shelf Image", 1920, 720)):
+        save(banner(w, h, 0.5), root, f"{tv}/{name}.imageset/Content.png")
+        save(banner(w * 2, h * 2, 0.5), root, f"{tv}/{name}.imageset/Content@2x.png")
+    # In-app mark and wordmark: PNG replacements for the upstream SVGs. The
+    # apply script swaps the imageset contents and Contents.json.
+    save(tall_mark(266, 855), root, f"{cat}/SiloMark.imageset/fuse-mark.png")
+    save(tall_mark(532, 1710), root, f"{cat}/SiloMark.imageset/fuse-mark@2x.png")
+    save(wordmark(764, 400), root, f"{cat}/SiloWordmark.imageset/fuse-wordmark.png")
+    save(wordmark(1528, 800), root, f"{cat}/SiloWordmark.imageset/fuse-wordmark@2x.png")
+
+
+def android(root):
+    dens = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
+    for app, legacy in (("androidApp", 48), ("androidTvApp", 80)):
+        res = f"{app}/src/androidMain/res"
+        for d, f in dens.items():
+            save(app_icon(int(legacy * f)), root, f"{res}/mipmap-{d}/ic_launcher.png")
+            save(adaptive_foreground(int(108 * f)), root, f"{res}/mipmap-{d}/ic_launcher_foreground.png")
+    save(banner(320, 180), root, "androidTvApp/src/androidMain/res/drawable/tv_banner.png")
+    save(wordmark(764, 400), root, "androidApp/src/androidMain/res/drawable/silo_wordmark.png")
+    # The TV app's vector mark and wordmark become bitmaps; the apply script
+    # deletes the upstream vector files of the same name.
+    save(tall_mark(64, 204), root, "androidTvApp/src/androidMain/res/drawable-nodpi/silo_mark.png")
+    save(wordmark(764, 400), root, "androidTvApp/src/androidMain/res/drawable-nodpi/silo_wordmark.png")
+
+
+if __name__ == "__main__":
+    apple_root, android_root = sys.argv[1], sys.argv[2]
+    apple(apple_root)
+    android(android_root)
+    print("wrote overlays")

@@ -1,7 +1,8 @@
 name: macOS App Build (personal)
 
 # Builds a silo-apple repository's SiloMac target unsigned on a GitHub-hosted macOS runner, ad-hoc
-# signs it, and publishes Silo-macOS.zip as an artifact and a prerelease.
+# signs it, and publishes the zipped app as an artifact and a prerelease.
+# A fork with fork/apply-brand.sh is built under its own brand.
 # No Apple Developer account is used, so on first launch macOS Gatekeeper
 # needs: right-click Silo.app > Open, or `xattr -cr /Applications/Silo.app`.
 
@@ -42,6 +43,10 @@ jobs:
       - name: Install XcodeGen (pinned, checksum-verified)
         uses: ./.github/actions/install-xcodegen
 
+      - name: Apply the fork's brand
+        run: |
+          if [ -x fork/apply-brand.sh ]; then fork/apply-brand.sh personal; fi
+
       - name: Generate Xcode project
         working-directory: iosApp
         run: xcodegen generate
@@ -67,15 +72,20 @@ jobs:
         run: |
           APP="$RUNNER_TEMP/dd/Build/Products/Release/Silo.app"
           test -d "$APP"
+          if [ -f fork/brand.env ]; then
+            . fork/brand.env
+            mv "$APP" "$(dirname "$APP")/$APP_NAME.app"
+            APP="$(dirname "$APP")/$APP_NAME.app"
+          fi
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
           mkdir -p out
-          ditto -c -k --keepParent "$APP" out/Silo-macOS.zip
+          ditto -c -k --keepParent "$APP" out/macOS-app.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Silo-macOS
-          path: out/Silo-macOS.zip
+          name: macOS-app
+          path: out/macOS-app.zip
           if-no-files-found: error
 
       - name: Publish prerelease
@@ -83,9 +93,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="mac-build.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" out/Silo-macOS.zip \
+          gh release create "$TAG" out/macOS-app.zip \
             --repo "$GITHUB_REPOSITORY" \
             --target main \
             --prerelease \
-            --title "Silo for macOS (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Unsigned (ad-hoc) personal build of the SiloMac target from ${{ inputs.repository }}@${{ inputs.ref }}. Unzip, move Silo.app to Applications, then run: xattr -cr /Applications/Silo.app"
+            --title "macOS app (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Unsigned (ad-hoc) personal build of the SiloMac target from ${{ inputs.repository }}@${{ inputs.ref }}. Unzip, move the app to Applications, then run: xattr -cr /Applications/<App>.app"
