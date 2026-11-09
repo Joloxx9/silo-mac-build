@@ -18,10 +18,10 @@ on:
     inputs:
       repository:
         description: 'silo-apple repository to build'
-        default: Joloxx9/silo-apple
+        default: Silo-Server/silo-apple
       ref:
         description: 'Branch, tag or commit to build'
-        default: spark
+        default: main
       version:
         description: 'Marketing version (e.g. 1.0.0)'
         required: true
